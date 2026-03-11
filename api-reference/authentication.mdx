@@ -1,0 +1,118 @@
+---
+title: "Authentication"
+description: "How to authenticate with the Outhire public API."
+---
+
+The Outhire API uses **Bearer token** authentication with company-scoped API keys.
+
+## Authentication header
+
+Include your API key in the `Authorization` header on every request:
+
+```
+Authorization: Bearer outh_a1b2c3d4e5f6789012345678901234567890abcd
+```
+
+<Note>
+  The `Authorization: Bearer` header is the only supported authentication method. `x-api-key` headers and query parameter authentication are not supported.
+</Note>
+
+## API key format
+
+API keys follow this format:
+
+| Part | Value |
+| --- | --- |
+| Prefix | `outh_` |
+| Body | 40 lowercase hex characters |
+| Total length | 45 characters |
+
+Example:
+
+```
+outh_a1b2c3d4e5f6789012345678901234567890abcd
+```
+
+## Company scoping
+
+API keys are **company-scoped, not user-scoped**. A valid key grants access to all resources belonging to the company it was created under. There are no per-key permission scopes — all keys for a company have the same access level.
+
+This means the API key determines which company's data the caller can read and write.
+
+## Key security
+
+Outhire follows security best practices for API key storage:
+
+- Raw keys are **hashed with SHA-256** before storage — Outhire does not store your key in plaintext
+- Keys are shown **only once** at creation time
+- After creation, only a short prefix (e.g. `outh_a1b2c3d4`) is visible in the admin UI for identification
+- `last_used_at` is tracked for each key
+
+## Managing keys
+
+API keys are managed at **Settings > API Keys** (admin-only).
+
+Admins can:
+
+- **Create** a named API key
+- **View** key prefixes, creation time, and last-used time
+- **Revoke** active keys
+
+### Revoking a key
+
+Revocation takes effect **immediately** — any request using a revoked key will receive a `401` response. Revoked keys remain visible in the admin UI with a revoked status.
+
+<Tip>
+  To rotate a key, create a new key first, update your integration to use it, then revoke the old key.
+</Tip>
+
+## Error handling
+
+All authentication failures return the same response regardless of the reason (missing, invalid, or revoked key):
+
+```json 401 Unauthorized
+{
+  "error": {
+    "code": "unauthorized",
+    "message": "Missing or invalid API key."
+  }
+}
+```
+
+## API error format
+
+All API errors use a consistent envelope:
+
+```json
+{
+  "error": {
+    "code": "<error_code>",
+    "message": "<human-readable message>"
+  }
+}
+```
+
+| Code | Description |
+| --- | --- |
+| `unauthorized` | Missing or invalid API key |
+| `not_found` | Resource does not exist |
+| `validation_error` | Request body failed validation |
+| `bad_request` | Malformed request |
+| `conflict` | Resource conflict (e.g. duplicate) |
+| `unprocessable_entity` | Valid request but cannot be processed |
+| `internal_error` | Unexpected server error |
+
+## Available endpoints
+
+The following endpoints are protected by API key authentication:
+
+| Method | Endpoint |
+| --- | --- |
+| `GET` | `/api/v1/jobs` |
+| `GET` | `/api/v1/jobs/:id` |
+| `GET` | `/api/v1/candidates` |
+| `POST` | `/api/v1/candidates` |
+| `GET` | `/api/v1/candidates/:id` |
+| `PATCH` | `/api/v1/candidates/:id` |
+| `GET` | `/api/v1/candidates/:id/notes` |
+| `POST` | `/api/v1/candidates/:id/notes` |

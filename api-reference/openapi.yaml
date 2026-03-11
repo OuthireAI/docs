@@ -1,0 +1,1325 @@
+openapi: 3.1.0
+info:
+  title: Outhire Public API
+  version: 0.1.0
+  description: |
+    OpenAPI description of the currently implemented public API under `/api/v1`.
+
+    Authentication uses bearer API keys generated from the Outhire app settings UI.
+    All resource access is scoped to the company that owns the API key.
+
+    Notes about current implementation:
+    - Cursor pagination is offset-based and the cursor is an opaque base64url-encoded object.
+    - Duplicate candidate detection is implemented at the application layer and is not concurrency-safe yet.
+servers:
+  - url: https://app.outhire.ai
+    description: Production
+security:
+  - bearerAuth: []
+tags:
+  - name: Jobs
+  - name: Candidates
+paths:
+  /api/v1/jobs:
+    get:
+      tags:
+        - Jobs
+      summary: List jobs
+      description: Lists jobs visible to the authenticated company.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: active
+          in: query
+          required: false
+          description: Filter by active state. Defaults to `true`.
+          schema:
+            type: boolean
+            default: true
+        - name: department_id
+          in: query
+          required: false
+          description: Filter by department id.
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Jobs list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobsListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/jobs/{id}:
+    get:
+      tags:
+        - Jobs
+      summary: Get job
+      description: Returns a single job if it belongs to the authenticated company.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Numeric job id.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/candidates:
+    get:
+      tags:
+        - Candidates
+      summary: List candidates
+      description: Lists candidates visible to the authenticated company.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: job_id
+          in: query
+          required: false
+          description: Filter by numeric job id.
+          schema:
+            type: integer
+            minimum: 1
+        - name: email
+          in: query
+          required: false
+          description: Filter by normalized candidate email.
+          schema:
+            type: string
+            format: email
+        - name: stage
+          in: query
+          required: false
+          description: Filter by stage.
+          schema:
+            $ref: '#/components/schemas/PublicApiStage'
+        - name: created_after
+          in: query
+          required: false
+          description: ISO8601 timestamp lower bound for `created_at`.
+          schema:
+            type: string
+            format: date-time
+        - name: created_before
+          in: query
+          required: false
+          description: ISO8601 timestamp exclusive upper bound for `created_at`.
+          schema:
+            type: string
+            format: date-time
+        - name: updated_after
+          in: query
+          required: false
+          description: ISO8601 timestamp lower bound for `updated_at`.
+          schema:
+            type: string
+            format: date-time
+        - name: sort
+          in: query
+          required: false
+          description: Sort field.
+          schema:
+            type: string
+            enum:
+              - created_at
+              - updated_at
+              - name
+            default: created_at
+        - name: order
+          in: query
+          required: false
+          description: Sort order.
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: desc
+      responses:
+        '200':
+          description: Candidates list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CandidatesListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags:
+        - Candidates
+      summary: Create candidate
+      description: |
+        Creates a candidate under a job owned by the authenticated company.
+
+        Supports either:
+        - `application/json` for metadata-only candidate creation
+        - `multipart/form-data` when uploading a resume file
+
+        When a resume is uploaded, it is processed asynchronously. The
+        `resume_data` field may be `null` in the immediate response and will
+        populate once processing completes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCandidateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateCandidateMultipartRequest'
+      responses:
+        '201':
+          description: Candidate created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CandidateResponse'
+        '400':
+          description: Malformed JSON or validation failure
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/candidates/{id}:
+    get:
+      tags:
+        - Candidates
+      summary: Get candidate
+      description: Returns a single candidate if it belongs to the authenticated company.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Numeric candidate id.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Candidate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CandidateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags:
+        - Candidates
+      summary: Update candidate
+      description: |
+        Updates an existing candidate for the authenticated company.
+
+        At least one updatable field must be present. Supplying `notes` creates a
+        `note_added` activity. Supplying a new `stage` creates a `stage_changed`
+        activity and enqueues the `candidate.stage_changed` webhook event.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Numeric candidate id.
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCandidateRequest'
+      responses:
+        '200':
+          description: Candidate updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CandidateResponse'
+        '400':
+          description: Malformed JSON, validation failure, or empty update payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/candidates/{id}/notes:
+    get:
+      tags:
+        - Candidates
+      summary: List candidate notes
+      description: |
+        Lists candidate notes for a company-scoped candidate.
+
+        Notes are backed by `candidate_activities` rows with `type = note_added`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Numeric candidate id.
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Candidate notes list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CandidateNotesListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags:
+        - Candidates
+      summary: Create candidate note
+      description: |
+        Appends a note to a candidate for the authenticated company.
+
+        This creates a `candidate_activities` row with `type = note_added`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Numeric candidate id.
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCandidateNoteRequest'
+      responses:
+        '201':
+          description: Candidate note created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CandidateNoteResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+webhooks:
+  candidateStageChanged:
+    post:
+      summary: candidate.stage_changed
+      description: Outbound webhook payload delivered when a candidate stage changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CandidateStageChangedWebhookPayload'
+      responses:
+        '200':
+          description: Receiver accepted the event
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Page size. Defaults to `25`. Maximum `100`.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque cursor returned by the previous page.
+      schema:
+        type: string
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: unauthorized
+              message: Missing or invalid API key.
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: Unprocessable entity
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    PublicApiStage:
+      description: Candidate pipeline stages currently accepted by the public API.
+      type: string
+      enum:
+        - prospect
+        - applied
+        - phonescreen
+        - inprogress
+        - hired
+        - rejected
+    ApplicationSource:
+      description: Candidate application source value set by this API.
+      type: string
+      enum:
+        - public_api
+    ErrorDetail:
+      description: Validation detail for a specific request field.
+      type: object
+      required:
+        - field
+        - message
+      properties:
+        field:
+          type: string
+          description: Request field path that failed validation.
+          example: email
+        message:
+          type: string
+          description: Human-readable validation message.
+          example: Invalid email
+    ErrorBody:
+      description: Standard error envelope payload.
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable error code.
+          enum:
+            - validation_error
+            - bad_request
+            - unauthorized
+            - not_found
+            - conflict
+            - unprocessable_entity
+            - internal_error
+        message:
+          type: string
+          description: Human-readable description of the error.
+          example: Request validation failed.
+        details:
+          type: array
+          description: Optional field-level validation details.
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+    ErrorResponse:
+      description: Top-level API error response.
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+      example:
+        error:
+          code: validation_error
+          message: Request validation failed.
+          details:
+            - field: email
+              message: Invalid email
+    Pagination:
+      description: Cursor pagination metadata returned by list endpoints.
+      type: object
+      required:
+        - has_more
+        - next_cursor
+      properties:
+        has_more:
+          type: boolean
+          description: Whether another page of results is available.
+          example: true
+        next_cursor:
+          type:
+            - string
+            - 'null'
+          description: |
+            Opaque cursor to pass back on the next request. Null when there is no
+            next page.
+          example: eyJvZmZzZXQiOjI1fQ
+    Job:
+      description: Public representation of a job post.
+      type: object
+      required:
+        - id
+        - title
+        - department_id
+        - is_active
+        - is_public
+        - locations
+        - location_type
+        - salary
+        - apply_url
+        - screening_questions
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          description: Internal numeric job id.
+          example: 40
+        title:
+          type:
+            - string
+            - 'null'
+          description: Job title.
+          example: Senior Engineer
+        department_id:
+          type:
+            - integer
+            - 'null'
+          description: Department id for the job, if set.
+          example: 1
+        is_active:
+          type:
+            - boolean
+            - 'null'
+          description: Whether the job is currently active.
+          example: true
+        is_public:
+          type: boolean
+          description: Whether the job is publicly visible in Outhire.
+          example: false
+        locations:
+          type: array
+          description: Flattened location labels parsed from the job post payload.
+          items:
+            type: string
+          example:
+            - Sydney, Australia
+            - Melbourne, Australia
+        location_type:
+          type:
+            - string
+            - 'null'
+          description: Location mode parsed from the job post payload.
+          example: remote
+        salary:
+          description: Salary information parsed from the job post payload, if present.
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/JobSalary'
+        apply_url:
+          type: string
+          description: External apply URL if set, otherwise an Outhire-generated fallback URL.
+          example: https://app.outhire.ai/jobs/abc123
+        screening_questions:
+          type: array
+          description: Raw screening questions array from the job post payload.
+          items: {}
+          example: []
+        created_at:
+          type: string
+          format: date-time
+          description: Job creation timestamp.
+          example: '2026-03-11T10:21:54.289003Z'
+        updated_at:
+          type: string
+          format: date-time
+          description: Job last update timestamp.
+          example: '2026-03-11T10:21:54.544000Z'
+      example:
+        id: 40
+        title: Senior Engineer
+        department_id: 1
+        is_active: true
+        is_public: false
+        locations:
+          - Sydney, Australia
+        location_type: remote
+        salary:
+          min: 120000
+          max: 160000
+          currency: AUD
+        apply_url: https://app.outhire.ai/jobs/abc123
+        screening_questions: []
+        created_at: '2026-03-11T10:21:54.289003Z'
+        updated_at: '2026-03-11T10:21:54.544000Z'
+    JobSalary:
+      description: Salary range parsed from the job post payload.
+      type: object
+      required:
+        - min
+        - max
+        - currency
+      properties:
+        min:
+          type:
+            - number
+            - 'null'
+          description: Minimum salary value.
+          example: 120000
+        max:
+          type:
+            - number
+            - 'null'
+          description: Maximum salary value.
+          example: 160000
+        currency:
+          type:
+            - string
+            - 'null'
+          description: ISO-like currency code stored on the job post.
+          example: AUD
+    JobSummary:
+      description: Minimal job object embedded in candidate responses.
+      type: object
+      required:
+        - id
+        - title
+      properties:
+        id:
+          type:
+            - integer
+            - 'null'
+          description: Internal numeric job id.
+          example: 40
+        title:
+          type:
+            - string
+            - 'null'
+          description: Job title.
+          example: Senior Engineer
+    Candidate:
+      description: Public representation of a candidate.
+      type: object
+      required:
+        - id
+        - public_id
+        - name
+        - email
+        - phone
+        - linkedin
+        - location
+        - stage
+        - rating
+        - fit_score
+        - application_source
+        - ats_candidate_id
+        - job
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          description: Internal numeric candidate id.
+          example: 419
+        public_id:
+          type: string
+          description: Public UUID-like candidate identifier.
+          example: e3745169-a137-4b99-8fcc-373d6d4c8d60
+        name:
+          type:
+            - string
+            - 'null'
+          description: Candidate name.
+          example: Jane Doe
+        email:
+          type:
+            - string
+            - 'null'
+          format: email
+          description: Candidate email.
+          example: jane@example.com
+        phone:
+          type:
+            - string
+            - 'null'
+          description: Candidate phone number after normalization where possible.
+          example: '+61412345678'
+        linkedin:
+          type:
+            - string
+            - 'null'
+          format: uri
+          description: LinkedIn profile URL.
+          example: https://linkedin.com/in/janedoe
+        location:
+          type:
+            - string
+            - 'null'
+          description: Candidate location string.
+          example: Sydney, Australia
+        stage:
+          type:
+            - string
+            - 'null'
+          description: Current candidate stage.
+          example: applied
+        rating:
+          type:
+            - integer
+            - 'null'
+          minimum: 1
+          maximum: 5
+          description: Candidate rating if set.
+          example: 4
+        fit_score:
+          type:
+            - number
+            - 'null'
+          description: Candidate fit score if present.
+          example: 82
+        application_source:
+          $ref: '#/components/schemas/ApplicationSource'
+        ats_candidate_id:
+          type:
+            - string
+            - 'null'
+          description: Optional external ATS identifier.
+          example: ext-456
+        job:
+          description: The job associated with the candidate.
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/JobSummary'
+        created_at:
+          type: string
+          format: date-time
+          description: Candidate creation timestamp.
+          example: '2026-03-11T10:21:54.289003Z'
+        updated_at:
+          type: string
+          format: date-time
+          description: Candidate last update timestamp.
+          example: '2026-03-11T10:21:54.544000Z'
+        applied_at:
+          type: string
+          format: date-time
+          description: Present on detailed candidate responses. Mirrors the candidate creation timestamp.
+          example: '2026-03-11T10:21:54.289003Z'
+        resume_url:
+          type:
+            - string
+            - 'null'
+          format: uri
+          description: Present on detailed candidate responses when a resume file exists. Signed URL expires.
+          example: https://api.outhire.ai/storage/cv/example.pdf?token=eyJhbGciOiJIUzI1NiIs...
+        resume_data:
+          description: Present on detailed candidate responses after async resume extraction completes.
+          oneOf:
+            - type: 'null'
+            - type: object
+              additionalProperties: true
+        resume_status:
+          type:
+            - string
+            - 'null'
+          description: Present on detailed candidate responses when resume processing is relevant.
+          example: processed
+      example:
+        id: 419
+        public_id: e3745169-a137-4b99-8fcc-373d6d4c8d60
+        name: Jane Doe
+        email: jane@example.com
+        phone: '+61412345678'
+        linkedin: https://linkedin.com/in/janedoe
+        location: Sydney, Australia
+        stage: applied
+        rating: 4
+        fit_score: 82
+        application_source: public_api
+        ats_candidate_id: ext-456
+        job:
+          id: 40
+          title: Senior Engineer
+        created_at: '2026-03-11T10:21:54.289003Z'
+        updated_at: '2026-03-11T10:21:54.544000Z'
+        applied_at: '2026-03-11T10:21:54.289003Z'
+        resume_url: https://api.outhire.ai/storage/cv/example.pdf?token=eyJhbGciOiJIUzI1NiIs...
+        resume_data:
+          personalInfo:
+            name: Jane Doe
+            email: jane@example.com
+          summary: Senior engineer with 8 years of experience
+        resume_status: processed
+    CandidateNote:
+      description: Candidate note backed by a `candidate_activities` row.
+      type: object
+      required:
+        - id
+        - candidate_id
+        - type
+        - note
+        - note_preview
+        - performer_id
+        - added_by
+        - created_at
+      properties:
+        id:
+          type: integer
+          description: Internal activity id for the note record.
+          example: 162
+        candidate_id:
+          type: integer
+          description: Candidate id that owns the note.
+          example: 419
+        type:
+          type: string
+          description: Activity type for note rows.
+          enum:
+            - note_added
+        note:
+          type:
+            - string
+            - 'null'
+          description: Full note body as stored in activity metadata.
+          example: Referred by internal team.
+        note_preview:
+          type:
+            - string
+            - 'null'
+          description: Stored or derived short preview of the note.
+          example: Referred by internal team.
+        performer_id:
+          type:
+            - string
+            - 'null'
+          description: Profile id if the note was added by an authenticated user in-app.
+          example: 11111111-1111-1111-1111-111111111111
+        added_by:
+          type:
+            - string
+            - 'null'
+          description: |
+            Best-effort source marker. API-created notes return `api`. Existing
+            in-app notes may surface `user` or another stored source value.
+          example: api
+        created_at:
+          type: string
+          format: date-time
+          description: Note creation timestamp.
+          example: '2026-03-11T10:21:54.553198Z'
+      example:
+        id: 162
+        candidate_id: 419
+        type: note_added
+        note: Referred by internal team.
+        note_preview: Referred by internal team.
+        performer_id: null
+        added_by: api
+        created_at: '2026-03-11T10:21:54.553198Z'
+    CandidateResponse:
+      description: Wrapper for a single candidate resource.
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/Candidate'
+    CandidatesListResponse:
+      description: Candidate list response with pagination metadata.
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Candidate'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    CandidateNoteResponse:
+      description: Wrapper for a single candidate note resource.
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/CandidateNote'
+    CandidateNotesListResponse:
+      description: Candidate notes list response with pagination metadata.
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CandidateNote'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    JobResponse:
+      description: Wrapper for a single job resource.
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/Job'
+    JobsListResponse:
+      description: Job list response with pagination metadata.
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Job'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    CreateCandidateRequest:
+      description: Request body for creating a candidate via JSON.
+      type: object
+      required:
+        - job_id
+        - name
+      properties:
+        job_id:
+          type: integer
+          minimum: 1
+          description: Numeric id of a job owned by the authenticated company.
+          example: 40
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Candidate name after trimming.
+          example: Jane Doe
+        email:
+          type:
+            - string
+            - 'null'
+          format: email
+          description: Optional candidate email. Used in duplicate detection by job.
+          example: jane@example.com
+        phone:
+          type:
+            - string
+            - 'null'
+          maxLength: 100
+          description: Optional phone number. Normalized where possible.
+          example: '+61 412 345 678'
+        linkedin:
+          type:
+            - string
+            - 'null'
+          format: uri
+          description: Optional LinkedIn profile URL.
+          example: https://linkedin.com/in/janedoe
+        location:
+          type:
+            - string
+            - 'null'
+          maxLength: 500
+          description: Optional freeform location string.
+          example: Sydney, Australia
+        stage:
+          allOf:
+            - $ref: '#/components/schemas/PublicApiStage'
+          description: Optional initial stage. Defaults to `prospect`.
+          example: prospect
+        notes:
+          type:
+            - string
+            - 'null'
+          maxLength: 2000
+          description: Optional note that creates a `note_added` activity row.
+          example: Referred by internal team
+      additionalProperties: false
+      example:
+        job_id: 40
+        name: Jane Doe
+        email: jane@example.com
+        phone: '+61 412 345 678'
+        linkedin: https://linkedin.com/in/janedoe
+        location: Sydney, Australia
+        stage: prospect
+        notes: Referred by internal team
+    CreateCandidateMultipartRequest:
+      description: |
+        Request body for creating a candidate via multipart form upload.
+
+        `name` may be omitted when `resume` is supplied. In that case, the API
+        creates a placeholder candidate and the async resume parser may backfill
+        name, email, phone, location, and LinkedIn later.
+      type: object
+      required:
+        - job_id
+      properties:
+        job_id:
+          type: integer
+          minimum: 1
+          description: Numeric id of a job owned by the authenticated company.
+          example: 40
+        name:
+          type:
+            - string
+            - 'null'
+          minLength: 1
+          maxLength: 200
+          description: Optional candidate name. Required when `resume` is not supplied.
+          example: Jane Doe
+        email:
+          type:
+            - string
+            - 'null'
+          format: email
+          description: Optional candidate email.
+          example: jane@example.com
+        phone:
+          type:
+            - string
+            - 'null'
+          maxLength: 100
+          description: Optional phone number.
+          example: '+61 412 345 678'
+        linkedin:
+          type:
+            - string
+            - 'null'
+          format: uri
+          description: Optional LinkedIn profile URL.
+          example: https://linkedin.com/in/janedoe
+        location:
+          type:
+            - string
+            - 'null'
+          maxLength: 500
+          description: Optional freeform location string.
+          example: Sydney, Australia
+        stage:
+          allOf:
+            - $ref: '#/components/schemas/PublicApiStage'
+          description: Optional initial stage. Defaults to `prospect`.
+          example: prospect
+        notes:
+          type:
+            - string
+            - 'null'
+          maxLength: 2000
+          description: Optional note that creates a `note_added` activity row.
+          example: Referred by internal team
+        resume:
+          type: string
+          format: binary
+          description: Optional PDF, DOC, or DOCX resume file up to 10MB.
+      additionalProperties: false
+    CreateCandidateNoteRequest:
+      description: Request body for appending a candidate note.
+      type: object
+      required:
+        - note
+      properties:
+        note:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: Full note body after trimming.
+          example: Referred by internal team.
+      additionalProperties: false
+      example:
+        note: Referred by internal team.
+    UpdateCandidateRequest:
+      description: |
+        Request body for updating a candidate.
+
+        All fields are optional, but at least one recognized field must be present.
+        Several fields are nullable and can be explicitly cleared by sending `null`.
+        `stage` is not nullable in the current implementation.
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Candidate name after trimming.
+          example: Jane Doe
+        email:
+          type:
+            - string
+            - 'null'
+          format: email
+          description: Optional candidate email. Used in duplicate detection by job.
+          example: jane@example.com
+        phone:
+          type:
+            - string
+            - 'null'
+          maxLength: 100
+          description: Candidate phone number, or `null` to clear it.
+          example: '+61 412 345 678'
+        linkedin:
+          type:
+            - string
+            - 'null'
+          format: uri
+          description: LinkedIn profile URL, or `null` to clear it.
+          example: https://linkedin.com/in/janedoe
+        location:
+          type:
+            - string
+            - 'null'
+          maxLength: 500
+          description: Freeform location, or `null` to clear it.
+          example: Melbourne, Australia
+        notes:
+          type:
+            - string
+            - 'null'
+          maxLength: 2000
+          description: Optional note that creates a `note_added` activity row.
+          example: Spoke with hiring manager
+        rating:
+          type:
+            - integer
+            - 'null'
+          minimum: 1
+          maximum: 5
+          description: Candidate rating from 1 to 5, or `null` to clear it.
+          example: 5
+        ats_candidate_id:
+          type:
+            - string
+            - 'null'
+          maxLength: 255
+          description: External ATS candidate id, or `null` to clear it.
+          example: ext-456
+        stage:
+          allOf:
+            - $ref: '#/components/schemas/PublicApiStage'
+          description: New candidate stage. Cannot be `null` in the current implementation.
+          example: phonescreen
+      additionalProperties: false
+      example:
+        name: Jane Doe
+        rating: 5
+        stage: phonescreen
+        notes: Spoke with hiring manager
+        ats_candidate_id: ext-456
+        location: Melbourne, Australia
+    CandidateStageChangedWebhookPayload:
+      description: Payload delivered to configured outbound webhooks on candidate stage changes.
+      type: object
+      required:
+        - event
+        - occurred_at
+        - candidate
+        - company
+        - job
+        - stage_change
+      properties:
+        event:
+          type: string
+          description: Webhook event name.
+          enum:
+            - candidate.stage_changed
+        occurred_at:
+          type: string
+          format: date-time
+          description: Timestamp when the stage change event was emitted.
+          example: '2026-03-11T10:21:54.544000Z'
+        candidate:
+          description: Candidate involved in the stage change.
+          type: object
+          required:
+            - id
+            - public_id
+            - name
+            - email
+            - url
+          properties:
+            id:
+              type: integer
+              description: Internal numeric candidate id.
+              example: 419
+            public_id:
+              type: string
+              description: Public UUID-like candidate identifier.
+              example: e3745169-a137-4b99-8fcc-373d6d4c8d60
+            name:
+              type:
+                - string
+                - 'null'
+              description: Candidate name.
+              example: Jane Doe
+            email:
+              type:
+                - string
+                - 'null'
+              format: email
+              description: Candidate email.
+              example: jane@example.com
+            url:
+              type: string
+              format: uri
+              description: Outhire app URL for the candidate.
+              example: https://app.outhire.ai/leads/419
+        company:
+          description: Company that owns the candidate.
+          type: object
+          required:
+            - id
+          properties:
+            id:
+              type: integer
+              description: Internal numeric company id.
+              example: 1
+        job:
+          description: Job associated with the candidate at the time of the stage change.
+          type: object
+          required:
+            - id
+            - title
+          properties:
+            id:
+              type:
+                - integer
+                - 'null'
+              description: Internal numeric job id.
+              example: 40
+            title:
+              type:
+                - string
+                - 'null'
+              description: Job title.
+              example: Senior Engineer
+        stage_change:
+          description: Stage transition details.
+          type: object
+          required:
+            - previous_stage
+            - new_stage
+            - changed_by
+            - changed_by_user_id
+          properties:
+            previous_stage:
+              type:
+                - string
+                - 'null'
+              description: Previous stage before the transition.
+              example: prospect
+            new_stage:
+              type: string
+              description: New stage after the transition.
+              example: phonescreen
+            changed_by:
+              type: string
+              description: Source of the change.
+              enum:
+                - api
+                - joel
+                - user
+            changed_by_user_id:
+              type:
+                - string
+                - 'null'
+              description: User id when `changed_by` is `user` or `joel`, otherwise null.
+              example: 11111111-1111-1111-1111-111111111111
+      example:
+        event: candidate.stage_changed
+        occurred_at: '2026-03-11T10:21:54.544000Z'
+        candidate:
+          id: 419
+          public_id: e3745169-a137-4b99-8fcc-373d6d4c8d60
+          name: Jane Doe
+          email: jane@example.com
+          url: https://app.outhire.ai/leads/419
+        company:
+          id: 1
+        job:
+          id: 40
+          title: Senior Engineer
+        stage_change:
+          previous_stage: prospect
+          new_stage: phonescreen
+          changed_by: api
+          changed_by_user_id: null

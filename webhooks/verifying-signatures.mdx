@@ -1,0 +1,153 @@
+---
+title: "Verifying signatures"
+description: "Validate that incoming webhook requests are genuinely from Outhire."
+---
+
+Every webhook delivery from Outhire includes a cryptographic signature so you can verify the request is authentic and hasn't been tampered with.
+
+## Signature headers
+
+Each request includes three headers:
+
+| Header | Description |
+| --- | --- |
+| `webhook-id` | Unique identifier for this delivery |
+| `webhook-timestamp` | Unix timestamp (seconds) of when the request was sent |
+| `webhook-signature` | HMAC-SHA256 signature of the request |
+
+## Verification steps
+
+<Steps>
+  <Step title="Extract the headers">
+    Read the `webhook-id`, `webhook-timestamp`, and `webhook-signature` headers from the incoming request.
+  </Step>
+  <Step title="Construct the signature base string">
+    Concatenate the webhook ID, timestamp, and raw request body, separated by periods:
+
+    ```
+    {webhook-id}.{webhook-timestamp}.{raw_request_body}
+    ```
+
+    Use the **raw request body** as received — do not parse and re-serialize the JSON.
+  </Step>
+  <Step title="Compute the expected signature">
+    Sign the base string using **HMAC-SHA256** with your webhook signing secret (the `whsec_` prefixed value from your webhook settings, with the prefix stripped before use as the key).
+
+    Base64-encode the resulting hash.
+  </Step>
+  <Step title="Compare signatures">
+    The `webhook-signature` header contains the signature in the format:
+
+    ```
+    v1,<base64-encoded-signature>
+    ```
+
+    Extract the signature after `v1,` and compare it to your computed value using a **constant-time comparison** to prevent timing attacks.
+  </Step>
+  <Step title="Check the timestamp">
+    Verify that `webhook-timestamp` is within **5 minutes** of the current time to prevent replay attacks. Reject requests with timestamps outside this window.
+  </Step>
+</Steps>
+
+## Example implementations
+
+<CodeGroup>
+
+```javascript Node.js
+import crypto from "crypto";
+
+function verifyWebhookSignature(request, secret) {
+  const webhookId = request.headers["webhook-id"];
+  const timestamp = request.headers["webhook-timestamp"];
+  const signature = request.headers["webhook-signature"];
+  const body = request.rawBody; // raw request body as string
+
+  // Check timestamp is within 5 minutes
+  const now = Math.floor(Date.now() / 1000);
+  const diff = Math.abs(now - parseInt(timestamp));
+  if (diff > 300) {
+    throw new Error("Webhook timestamp too old");
+  }
+
+  // Strip the whsec_ prefix from your secret
+  const signingKey = Buffer.from(secret.replace("whsec_", ""), "base64");
+
+  // Construct base string and compute HMAC
+  const baseString = `${webhookId}.${timestamp}.${body}`;
+  const expected = crypto
+    .createHmac("sha256", signingKey)
+    .update(baseString)
+    .digest("base64");
+
+  // Extract signature value (after "v1,")
+  const received = signature.split(",")[1];
+
+  // Constant-time comparison
+  if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(received))) {
+    throw new Error("Invalid webhook signature");
+  }
+
+  return JSON.parse(body);
+}
+```
+
+```python Python
+import hmac
+import hashlib
+import base64
+import time
+
+def verify_webhook_signature(headers: dict, body: str, secret: str):
+    webhook_id = headers["webhook-id"]
+    timestamp = headers["webhook-timestamp"]
+    signature = headers["webhook-signature"]
+
+    # Check timestamp is within 5 minutes
+    now = int(time.time())
+    if abs(now - int(timestamp)) > 300:
+        raise ValueError("Webhook timestamp too old")
+
+    # Strip the whsec_ prefix
+    signing_key = base64.b64decode(secret.removeprefix("whsec_"))
+
+    # Construct base string and compute HMAC
+    base_string = f"{webhook_id}.{timestamp}.{body}"
+    expected = base64.b64encode(
+        hmac.new(signing_key, base_string.encode(), hashlib.sha256).digest()
+    ).decode()
+
+    # Extract signature value (after "v1,")
+    received = signature.split(",")[1]
+
+    # Constant-time comparison
+    if not hmac.compare_digest(expected, received):
+        raise ValueError("Invalid webhook signature")
+
+    return True
+```
+
+</CodeGroup>
+
+<Warning>
+  Always use the **raw request body** for signature verification. Parsing the JSON and re-serializing it may change formatting (whitespace, key order) and cause verification to fail.
+</Warning>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Signature verification fails on every request">
+    - Confirm you're using the correct signing secret from your webhook settings
+    - Make sure you're stripping the `whsec_` prefix before using the secret as a key
+    - Verify you're using the raw request body, not a parsed/re-serialized version
+    - Check that your base string format is exactly `{webhook-id}.{timestamp}.{body}` with period separators
+  </Accordion>
+  <Accordion title="Requests rejected for timestamp">
+    - Ensure your server clock is synchronized (use NTP)
+    - The tolerance window is 5 minutes — requests outside this window are considered invalid
+  </Accordion>
+  <Accordion title="Test ping works but production events fail">
+    - Confirm your endpoint returns a `2xx` status within 10 seconds
+    - Check that your endpoint handles the larger payloads of production events
+    - Review delivery logs in the Outhire admin UI for specific error details
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,195 @@
+---
+title: "Event reference"
+description: "Payload schemas and field details for each webhook event type."
+---
+
+All webhook deliveries are sent as `POST` requests with `Content-Type: application/json`. Your endpoint must return a `2xx` response within **10 seconds** for the delivery to be considered successful.
+
+Every payload includes:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `event` | string | The event type identifier |
+| `occurred_at` | string | ISO 8601 timestamp of when the event occurred |
+
+---
+
+## candidate.applied
+
+Sent when a candidate submits a self-serve application.
+
+<Warning>
+  This event only fires for candidates who apply directly (via your careers page or application form). Candidates created through the API or other intake methods do not trigger this event.
+
+  Specifically, it requires `application_source = self_apply` and `lead_type = applied`.
+</Warning>
+
+### Payload
+
+```json
+{
+  "event": "candidate.applied",
+  "occurred_at": "2026-03-11T00:00:00.000Z",
+  "candidate": {
+    "id": 123,
+    "name": "Jane Doe",
+    "email": "jane@example.com",
+    "phone": "+61400000000",
+    "fit_score": 82,
+    "applied_at": "2026-03-11T00:00:00.000Z",
+    "resume_url": "https://...",
+    "resume_data": {},
+    "url": "https://app.outhire.ai/leads/123"
+  },
+  "job": {
+    "id": 456,
+    "title": "Account Executive"
+  },
+  "company": {
+    "id": 789
+  }
+}
+```
+
+### Fields
+
+<ParamField body="candidate.id" type="integer">
+  Unique candidate identifier.
+</ParamField>
+
+<ParamField body="candidate.name" type="string">
+  Full name of the candidate.
+</ParamField>
+
+<ParamField body="candidate.email" type="string">
+  Email address.
+</ParamField>
+
+<ParamField body="candidate.phone" type="string">
+  Phone number in E.164 format.
+</ParamField>
+
+<ParamField body="candidate.fit_score" type="integer | null">
+  AI-generated fit score (0–100). May be `null` if scoring has not completed.
+</ParamField>
+
+<ParamField body="candidate.applied_at" type="string">
+  ISO 8601 timestamp of when the candidate applied.
+</ParamField>
+
+<ParamField body="candidate.resume_url" type="string | null">
+  Signed URL to the candidate's resume file, if one was uploaded. **Expires after 24 hours.**
+</ParamField>
+
+<ParamField body="candidate.resume_data" type="object | null">
+  Parsed resume data, if available.
+</ParamField>
+
+<ParamField body="candidate.url" type="string">
+  Direct link to the candidate's profile in the Outhire app.
+</ParamField>
+
+<ParamField body="job.id" type="integer">
+  ID of the job the candidate applied to.
+</ParamField>
+
+<ParamField body="job.title" type="string">
+  Title of the job.
+</ParamField>
+
+<ParamField body="company.id" type="integer">
+  ID of the company that owns the job.
+</ParamField>
+
+---
+
+## candidate.stage_changed
+
+Sent when a candidate moves from one pipeline stage to another. The event is **not** fired if the previous and new stage are the same.
+
+### Trigger sources
+
+Stage changes can originate from:
+
+- A user moving a candidate in the UI (single or bulk)
+- Joel (Outhire's AI agent) updating a candidate's stage
+- The public API (`PATCH /api/v1/candidates/:id`)
+
+### Payload
+
+```json
+{
+  "event": "candidate.stage_changed",
+  "occurred_at": "2026-03-11T00:00:00.000Z",
+  "candidate": {
+    "id": 123,
+    "public_id": "cand_abc123",
+    "name": "Jane Doe",
+    "email": "jane@example.com",
+    "url": "https://app.outhire.ai/leads/123"
+  },
+  "job": {
+    "id": 456,
+    "title": "Account Executive"
+  },
+  "company": {
+    "id": 789
+  },
+  "stage_change": {
+    "previous_stage": "applied",
+    "new_stage": "interview",
+    "changed_by": "user",
+    "changed_by_user_id": "uuid-or-null"
+  }
+}
+```
+
+### Fields
+
+<ParamField body="candidate.id" type="integer">
+  Unique candidate identifier.
+</ParamField>
+
+<ParamField body="candidate.public_id" type="string">
+  Public-facing candidate ID (prefixed with `cand_`).
+</ParamField>
+
+<ParamField body="candidate.name" type="string">
+  Full name of the candidate.
+</ParamField>
+
+<ParamField body="candidate.email" type="string">
+  Email address.
+</ParamField>
+
+<ParamField body="candidate.url" type="string">
+  Direct link to the candidate's profile in the Outhire app.
+</ParamField>
+
+<ParamField body="job.id" type="integer">
+  ID of the job the candidate is associated with.
+</ParamField>
+
+<ParamField body="job.title" type="string">
+  Title of the job.
+</ParamField>
+
+<ParamField body="company.id" type="integer">
+  ID of the company.
+</ParamField>
+
+<ParamField body="stage_change.previous_stage" type="string">
+  The stage the candidate was in before the change.
+</ParamField>
+
+<ParamField body="stage_change.new_stage" type="string">
+  The stage the candidate moved to.
+</ParamField>
+
+<ParamField body="stage_change.changed_by" type="string">
+  Who initiated the change. One of: `user`, `joel`, or `api`.
+</ParamField>
+
+<ParamField body="stage_change.changed_by_user_id" type="string | null">
+  UUID of the user who made the change, when applicable. `null` for non-user actors.
+</ParamField>

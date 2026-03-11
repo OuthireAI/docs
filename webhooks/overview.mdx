@@ -1,0 +1,124 @@
+---
+title: "Overview"
+description: "Receive real-time notifications when candidate events happen in Outhire."
+---
+
+Outbound webhooks let you push candidate lifecycle events from Outhire to your own systems in real time. When a candidate applies or moves between stages, Outhire sends an HTTP POST request to the URL you configure.
+
+## Supported events
+
+| Event | Description |
+| --- | --- |
+| `candidate.applied` | A candidate submits a self-serve application |
+| `candidate.stage_changed` | A candidate moves from one pipeline stage to another |
+
+A single webhook endpoint can subscribe to one or both events.
+
+## Setting up a webhook
+
+<Steps>
+  <Step title="Open webhook settings">
+    Navigate to **Settings > Webhooks** in the Outhire app, or go directly to `/settings/webhooks`.
+
+    Webhook management is available to **admin users only**.
+  </Step>
+  <Step title="Add an endpoint">
+    Click **Add webhook** and enter the URL that should receive events. Your endpoint must:
+
+    - Accept `POST` requests
+    - Return a `2xx` status code within **10 seconds**
+    - Be reachable over HTTPS (recommended)
+  </Step>
+  <Step title="Select event types">
+    Choose which events your endpoint should receive. At least one event type is required.
+  </Step>
+  <Step title="Save and copy your signing secret">
+    After saving, Outhire generates a signing secret (prefixed with `whsec_`). Copy this secret — you'll need it to [verify webhook signatures](/webhooks/verifying-signatures).
+  </Step>
+</Steps>
+
+## Custom headers
+
+You can add custom HTTP headers that Outhire will include on every delivery to your endpoint. This is useful for authentication tokens or routing metadata.
+
+<AccordionGroup>
+  <Accordion title="Rules">
+    - Maximum **10** custom headers per webhook
+    - Header names: up to 100 characters, must be valid HTTP token names
+    - Header values: up to 2000 characters
+    - Duplicate header names are rejected (case-insensitive)
+  </Accordion>
+  <Accordion title="Reserved headers">
+    The following headers are managed by Outhire and cannot be overridden:
+
+    - `content-type`
+    - `webhook-id`
+    - `webhook-timestamp`
+    - `webhook-signature`
+  </Accordion>
+</AccordionGroup>
+
+## Managing webhooks
+
+From the webhooks settings page, admins can:
+
+- **Enable / disable** a webhook without deleting it
+- **Delete** a webhook permanently
+- **View the signing secret** for signature verification
+- **Edit custom headers** sent with each delivery
+- **Send a test ping** to verify connectivity
+- **Inspect delivery logs** with full request and response details
+
+<Note>
+  Each URL can only be registered once per company. To change event subscriptions, edit the existing webhook rather than creating a duplicate.
+</Note>
+
+## Test ping
+
+Use the **Send test ping** button to verify your endpoint is reachable. The test ping sends a `webhook.ping` event:
+
+```json
+{
+  "event": "webhook.ping",
+  "occurred_at": "2026-03-11T00:00:00.000Z",
+  "webhook": {
+    "id": 123,
+    "url": "https://example.com/webhooks/outhire"
+  }
+}
+```
+
+Test pings are logged like normal deliveries and appear in your delivery history. `webhook.ping` is not a subscribable production event — it exists solely for testing.
+
+## Delivery logs
+
+Every webhook delivery attempt is logged and visible in the admin UI. For each delivery you can inspect:
+
+- HTTP status code
+- Request headers and payload
+- Response headers and body (truncated to 4000 characters)
+- Delivery status: `sending`, `success`, or `failed`
+- Timestamp and attempt count
+
+## Delivery behavior
+
+Outhire uses a unique **event key** per delivery to prevent duplicate sends:
+
+| Event | Key format |
+| --- | --- |
+| `candidate.applied` | `candidate.applied:{webhookId}:{candidateId}` |
+| `candidate.stage_changed` | `candidate.stage_changed:{webhookId}:{candidateId}:{occurredAtMillis}` |
+| `webhook.ping` | `webhook.ping:{webhookId}:{uuid}` |
+
+If a delivery has already completed successfully, the same event will not be sent again. Your endpoint should still be designed to handle the possibility of receiving the same event more than once — use idempotent processing where possible.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Event reference" icon="list" href="/webhooks/events">
+    Full payload schemas for each event type.
+  </Card>
+  <Card title="Verifying signatures" icon="shield-halved" href="/webhooks/verifying-signatures">
+    Validate that requests are genuinely from Outhire.
+  </Card>
+</CardGroup>
