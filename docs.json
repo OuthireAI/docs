@@ -96,6 +96,15 @@
       "href": "https://outhire.ai"
     }
   },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "claude",
+      "chatgpt",
+      "cursor"
+    ]
+  },
   "footer": {
     "socials": {
       "linkedin": "https://www.linkedin.com/company/outhire-ai"
